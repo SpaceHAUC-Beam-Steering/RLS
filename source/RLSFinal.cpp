@@ -1,12 +1,14 @@
 /*
     UMass Lowell SPACEHAUC Beam Steering
-    RLS.cpp     
+    RLSFinal.cpp     
     GNU GPLv3 License
 */
 
 #include <iostream>
 #include <armadillo>
 #include <cmath>
+#include <vector>
+#include <complex>
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
@@ -15,13 +17,15 @@
 using namespace std;
 using namespace arma;
 
+typedef complex<double> cdouble;
+
 class GenSignalReturn {
 public:
-  double received;
-  double desired;
-  double noise;
+  mat received;
+  mat desired;
+  mat noise;
 
-  GenSignalReturn(double received, double desired, double noise) {
+  GenSignalReturn(mat received, mat desired, mat noise) {
     this->received = received;
     this->desired = desired;
     this->noise = noise;
@@ -30,16 +34,16 @@ public:
 
 class RLSReturn {
 public:
-  double error;
-  double weights;
+  mat error;
+  mat weights;
 
-  RLSReturn(double error, double weights) {
+  RLSReturn(mat error, mat weights) {
     this->error = error;
     this->weights = weights;
   }
 };
 
-GenSignalReturn genSignal(double num_points, double frequency, double filter,
+GenSignalReturn genSignal(double num_points, double frequency, mat filt,
 			  double n_var, double SNR) {
     /*
       Produces object containing three members:
@@ -50,43 +54,48 @@ GenSignalReturn genSignal(double num_points, double frequency, double filter,
       Input:
       @param num_points       number of points to generate 
       @param frequency         frequency of fundamental tone
-      @param filter         filter coefficients
+      @param filt         filter coefficients
       @param n_var         white noise variance
       @param SNR          signal to noise ratio of tone
     */
 
-  double t = 0;//linspace(0, 1, num_points);
+  cdouble i(0, 1);
 
-  double desired = 0; //sin(2*pi*frequency*t);
+  mat t = linspace(0, 1, num_points);
+
+  mat desired = sin(2*M_PI*frequency*t);
 
   double elevation = M_PI/3;
   double azimuth = M_PI/3;
   
-  double g = 0; // [];
-  for(int m = 1; m < 4; m++) {
-    double u = 0;//exp(1i*pi*(m-1);
-    double a = u*sin(elevation)*cos(azimuth);
-    double g = 0; //[g a];
+  std::vector<complex<double> > g;
+  for(double m = 0; m < 4; m++) {
+    cdouble u = exp(i*M_PI*(m-1));
+    cdouble a = u*sin(elevation)*cos(azimuth);
+    g.push_back(a);
   }
+  cx_rowvec g_arma = cx_rowvec(g);
 
-  double h = 0; //[];
-  for(int p = 0; p < 4; p++) {
-    double v = 0;//exp(1i*pi*(p-1));
-    double b = v * sin(elevation)*sin(azimuth);
-    h = 0; //[h b];
+  std::vector<complex<double> > h;
+  for(double p = 0; p < 4; p++) {
+    cdouble v = exp(i*M_PI*(p-1));
+    cdouble b = v * sin(elevation)*sin(azimuth);
+    h.push_back(b);
   }
+  cx_rowvec h_arma = cx_rowvec(h);
 
   // Generate noise
-  double noise = sqrt(n_var)*1;//sqrt(nVar)*randn(num_points,1);
-  double addnoise = 1; //filter(filter, 1, noise);
+  mat noise = sqrt(n_var)*randn(num_points,1);
+  //double addnoise = 1; //filter(filt, 1, noise);
   //freqz(filt, 1, num_points);
 
-  desired = (desired); // (desired) / sqrt(var(desired)/(10^(SNR/10)*var(noise)));
+  desired = (desired) / sqrt(var(desired)/(pow(10,(SNR/10))*var(noise)));
   // Display calculated SNR
   cout << "Calculated SNR = " << 5.0 << endl; // num2str(10*log10(var(desired)/var(noise)))])
 
-  // Add noise to signal
-  double received = 0; //(desired*g*h.') + addnoise;
+  // Add noise to signal - beware of the real function!
+  
+  mat received = real(desired*g_arma*h_arma.t()); // + addnoise;
   
   return GenSignalReturn(received, desired, noise);
 }
@@ -108,30 +117,38 @@ RLSReturn RLS(int lambda, int delta, int sysorder) {
   int num_points = 1000;
   double frequency = 12e9;
   int filter_order = 16;
-  int filter = -1; //should be rand(filtord, 1);
+  mat filter = randu<mat>(filter_order, 1);//should be rand(filtord, 1);
   int n_var = 1;
   int SNR = -20;
   
   GenSignalReturn gsr = genSignal(num_points, frequency, filter, n_var, SNR);
-  double received = gsr.received;
-  double desired = gsr.desired;
-  double oise = gsr.noise;
+  mat received = gsr.received;
+  mat desired = gsr.desired;
+  mat noise = gsr.noise;
 
-  double P = 0; //eye(sysorder)* 1/delta;
-  double weights = 0; //zeros(sysorder,1);
-  received = received; //received(:);
-  double error = desired*0;
+  mat P = eye(sysorder, sysorder) * 1.0/delta;
+  //double P = 0; //eye(sysorder)* 1/delta;
+  mat weights = zeros<mat>(sysorder,1);
+  vec received_vec = vectorise(received);
+  mat error = desired*0;
   double lambda1 = 1/lambda;
-  int len = 1; //length(received);
+  int len = received_vec.n_elem;
 
   for(int n = sysorder; n < len; n++) {
-    double input = 5; //noise(n:-1:n-sysorder+1);
 
-    double K = (lambda1*P*input)/(1+lambda1*input*P*input); //ahh! there was a '* here somewhere...
-    double output = weights * input; // there was another '* here!
-    //error(n) = received(n)-output;
-    weights = weights + K * error; //error(n) instead
-    P=(lambda1*P)-(lambda1*K*input*P); // another '* here
+    // Must do indexing manually: input = noise(n:-1:n-sysorder+1);
+    int size = sysorder + 1;
+    mat input = zeros<mat>(size, 1);
+    for(int i = 0; i < n - sysorder; i++) {
+      input(i, 1) = noise(i, 1);
+    }
+    
+
+    mat K = (lambda1*P*input)/(1+lambda1*input.t()*P*input); //ahh! there was a '* here somewhere...
+    mat output = weights.t() * input; // there was another '* here!
+    error(n) = received_vec(n) - output(0);
+    weights = weights + K * error(n); //error(n) instead
+    P=(lambda1*P)-(lambda1*K*input.t()*P); // another '* here
   }
   
   double e = 0; //error(16:1000);
