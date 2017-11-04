@@ -9,13 +9,15 @@
 #include <cmath>
 #include <vector>
 #include <complex>
+#include "sigpack-1.2.2/sigpack/sigpack.h"
 
 #ifndef M_PI
-#define M_PI (3.14159265358979323846)
+#define M_PI 3.1416 //(3.14159265358979323846)
 #endif
 
 using namespace std;
 using namespace arma;
+using namespace sp;
 
 typedef complex<double> cdouble;
 
@@ -64,7 +66,18 @@ GenSignalReturn genSignal(double num_points, double frequency, mat filt,
 
   mat t = linspace(0, 1, num_points);
 
+  cout << "Mean t: " << mean(t) << endl;
+
   mat desired = sin(2*M_PI*frequency*t);
+
+  cout << "Frequency: " << frequency << endl;
+
+  cout << "Intermediate: " << mean(2*M_PI*frequency*t);
+
+  cout << "Original desired: " << mean(desired) << endl;
+  cout << "Original desired var: " << var(vectorise(desired)) << endl;
+
+  
 
   double elevation = M_PI/3;
   double azimuth = M_PI/3;
@@ -90,29 +103,38 @@ GenSignalReturn genSignal(double num_points, double frequency, mat filt,
   cout << "noise calculations" << endl;
 
   // Generate noise
+  FIR_filt<double, double, double> G;
+  G.set_coeffs(filt);
   mat noise = sqrt(n_var)*randn(num_points,1);
-  //double addnoise = 1; //filter(filt, 1, noise);
-  //freqz(filt, 1, num_points);
+  cout << "Mean noise: " << vectorise(mean(noise)) << endl;
+  mat addnoise = G.filter(noise);
+
   cout << "SNR calculations" << endl;
   desired = (desired) / sqrt(var(vectorise(desired))/(pow(10,(SNR/10))*var(vectorise(noise))));
   // Display calculated SNR
-  cout << "Calculated SNR = " << 5.0 << endl; // num2str(10*log10(var(desired)/var(noise)))])
+  cout << "Calculated SNR = " << 10*log10(var(vectorise(desired))/var(vectorise(noise))) << endl;
 
   // Add noise to signal - beware of the real function!
 
   cx_mat result = desired*g_arma*h_arma.t();
 
-  //cout << result << endl;
+  cout << "Mean addnoise: " << mean(vectorise(addnoise)) << endl;
+  cout << "Variance addnoise: " << var(vectorise(addnoise)) << endl;
   
-  mat received = real(result); // + addnoise;
+  mat received = real(result) + addnoise;
 
   cout << "genSignal return" << endl;
+
+  cout << "Received mean value: " << mean(received) << endl;
+  cout << "Desired mean value: " << mean(desired) << endl;
+  cout << "Original desired var: " << var(vectorise(desired)) << endl;
+  //cout << noise << endl;
   
   return GenSignalReturn(received, desired, noise);
 }
 
 
-RLSReturn RLS(int lambda, int delta, int sysorder) {
+RLSReturn RLS(double lambda, double delta, double sysorder) {
   /*
   Input:
   @param lambda           forgetting factor, dim 1x1   
@@ -125,6 +147,9 @@ RLSReturn RLS(int lambda, int delta, int sysorder) {
   @weights                final filter coefficients, dim sysorderx1
   */
   cout << "RLS function call" << endl;
+
+  arma_rng::set_seed_random();
+  
   int num_points = 1000;
   double frequency = 12e9;
   int filter_order = 16;
@@ -139,35 +164,53 @@ RLSReturn RLS(int lambda, int delta, int sysorder) {
 
   cout << "matrices initialize" << endl;
   mat P = eye(sysorder, sysorder) * 1.0/delta;
-  //double P = 0; //eye(sysorder)* 1/delta;
+  cout << "weights" << endl;
   mat weights = zeros<mat>(sysorder,1);
+  cout << "received_vec" << endl;
   vec received_vec = vectorise(received);
+  cout << "error" << endl;
   mat error = desired*0;
-  double lambda1 = 1/lambda;
+  cout << "lambda1 created from lambda=" << lambda << endl;
+  double lambda1 = pow(lambda, -1);
+  cout << "len" << endl;
   int len = received_vec.n_elem;
-
-
-  for(int n = sysorder; n < len; n++) {
+  cout << "sysorder: " << sysorder << endl;
+  cout << "len: " << len << endl;
+  for(int n = sysorder-1; n < len; n++) {
     
-    //cout << "process input" << endl;
+    cout << "process input" << endl;
+    cout << "Mean/var noise" << mean(noise) << ", " << var(noise) << endl;
     // Must do indexing manually: input = noise(n:-1:n-sysorder+1);
     mat input = zeros<mat>(sysorder, 1);
-    for(int i = n; i < n - sysorder; i++) {
-      input(i, 1) = noise(i, 1);
+    for(int i = n - sysorder+1; i < n+1; i++) {
+      input(i) = noise(i);
     }
-    input = fliplr(input);
+    cout << "Mean/var input: " << mean(input) << ", " << var(input) << endl;
+    mat tmp = input;
+    cout << "flipping" << endl;
+    input = flipud(input);
+    cout << "testing for reversal of input" << endl;
+    if(tmp(0) != input(input.n_elem-1)) {
+      cout << "Input may not be reversed!" << endl;
+      cout << "Final element: " << input.n_elem-1 << endl;
+      cout << "Values: " << tmp(0) << ", " << input(input.n_elem-1) << endl;
+    }
 
-    //cout << "calculate K" << endl;
-
+    cout << "Calculate K" << endl;
+    cout << "Value of denominator: " << as_scalar(1+lambda1*input.t()*P*input) << endl;
+    cout << "lambda1*input.t()*P: " << lambda1 << endl;
     mat K = (lambda1*P*input)/as_scalar(1+lambda1*input.t()*P*input); //ahh!
-
-    //cout << "calculate output" << endl;
+    cout << "Mean/var K: " << mean(K) << ", " << var(K) << endl;
+    cout << "calculate output" << endl;
     
     mat output = weights.t() * input; // there was another '* here!
     error(n) = received_vec(n) - as_scalar(output);
     weights = weights + K * error(n); //error(n) instead
     P=(lambda1*P)-(lambda1*K*input.t()*P); // another '* here
   }
+
+  cout << "Weights mean: " << mean(weights) << endl;
+  cout << "Weights var: " << var(vectorise(weights)) << endl;
 
   cout << "calculate error statistics" << endl;
   
@@ -186,15 +229,6 @@ RLSReturn RLS(int lambda, int delta, int sysorder) {
 
   cout << "plot" << endl;
 
-  // Plot here!
-
-  double t = 0; //linspace(0, length(received)/num_points, length(received));
-  //figure;
-  //plot(t, desired, t, error);
-  //title('Comparison of Filtered Signal to Original Signal');
-  //figure;
-  //plot(q, e2);
-
   // Calculate SNR improvement
   double SNRi = 10*log10(var(vectorise(received))/var(vectorise(error)));
   cout << SNRi << "dB SNR Improvement" << endl;
@@ -205,8 +239,8 @@ RLSReturn RLS(int lambda, int delta, int sysorder) {
 }
 
 int main(int argc, char* argv[]) {
-  // Driver program.. need parameters to test this functio with.
-  RLS(2,.1,10);
+  // Driver program.. need parameters to test this function with.
+  RLS(0.95, 100.0, 1000.0);
   return 0;
 }
 
