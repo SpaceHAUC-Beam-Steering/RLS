@@ -9,8 +9,9 @@
 #include <cmath>
 #include <vector>
 #include <complex>
-#include "sigpack-1.2.3/sigpack/sigpack.h"
+#include "sig/sigpack/sigpack.h"
 #include <cstdlib>
+#include <time.h>
 
 #ifndef M_PI
 #define M_PI 3.1416 //(3.14159265358979323846)
@@ -45,6 +46,11 @@ public:
     this->weights = weights;
   }
 };
+
+double genRandAngle(){
+    double randNum = ((double) rand() / (RAND_MAX));
+    return randNum * M_PI;
+}
 
 GenSignalReturn genSignal(double num_points, double frequency, mat filt,
 			  double n_var, double SNR) {
@@ -87,6 +93,8 @@ GenSignalReturn genSignal(double num_points, double frequency, mat filt,
   double elevation = genRandAngle();
   double azimuth   = genRandAngle();
 
+  cout << "elevation: " << elevation << endl;
+  cout << "azimuth:   " << azimuth << endl;
   cout << "complex math" << endl;
   
   std::vector<complex<double> > g;
@@ -243,12 +251,9 @@ RLSReturn RLS(double lambda, double delta, double sysorder) {
   return RLSReturn(error, weights);
 }
 
-double genRandAngle(){
-    double randNum = ((double) rand() / (RAND_MAX)); 
-    return randNum * M_PI;
-}
-
 int main(int argc, char* argv[]) {
+  
+  srand (time(NULL));
   // Driver program.. need parameters to test this function with.
   RLS(0.98, 100.0, 16.0);
   return 0;
