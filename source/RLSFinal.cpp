@@ -9,7 +9,8 @@
 #include <cmath>
 #include <vector>
 #include <complex>
-#include "sigpack-1.2.2/sigpack/sigpack.h"
+#include "sigpack-1.2.3/sigpack/sigpack.h"
+#include <cstdlib>
 
 #ifndef M_PI
 #define M_PI 3.1416 //(3.14159265358979323846)
@@ -78,9 +79,13 @@ GenSignalReturn genSignal(double num_points, double frequency, mat filt,
   cout << "Original desired var: " << var(vectorise(desired)) << endl;
 
   
-
-  double elevation = M_PI/3;
-  double azimuth = M_PI/3;
+  // Testing purposes
+ 
+  // double elevation = M_PI/3;
+  // double azimuth = M_PI/3;
+ 
+  double elevation = genRandAngle();
+  double azimuth   = genRandAngle();
 
   cout << "complex math" << endl;
   
@@ -151,7 +156,7 @@ RLSReturn RLS(double lambda, double delta, double sysorder) {
   arma_rng::set_seed_random();
   
   int num_points = 1000;
-  double frequency = 12e9;
+  double frequency = 9e9;
   int filter_order = 16;
   mat filter = randu<mat>(filter_order, 1);//should be rand(filtord, 1);
   int n_var = 1;
@@ -238,9 +243,14 @@ RLSReturn RLS(double lambda, double delta, double sysorder) {
   return RLSReturn(error, weights);
 }
 
+double genRandAngle(){
+    double randNum = ((double) rand() / (RAND_MAX)); 
+    return randNum * M_PI;
+}
+
 int main(int argc, char* argv[]) {
   // Driver program.. need parameters to test this function with.
-  RLS(0.95, 100.0, 1000.0);
+  RLS(0.98, 100.0, 16.0);
   return 0;
 }
 
