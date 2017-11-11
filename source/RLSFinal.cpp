@@ -47,9 +47,13 @@ public:
   }
 };
 
+
+/*
+	Generating a random angle [0, M_PI)
+
+*/
 double genRandAngle(){
-    double randNum = ((double) rand() / (RAND_MAX));
-    return randNum * M_PI;
+    return (double) (rand() / (RAND_MAX / M_PI));
 }
 
 GenSignalReturn genSignal(double num_points, double frequency, mat filt,
@@ -87,8 +91,8 @@ GenSignalReturn genSignal(double num_points, double frequency, mat filt,
   
   // Testing purposes
  
-  // double elevation = M_PI/3;
-  // double azimuth = M_PI/3;
+  //double elevation = M_PI/3;
+  //double azimuth = M_PI/3;
  
   double elevation = genRandAngle();
   double azimuth   = genRandAngle();

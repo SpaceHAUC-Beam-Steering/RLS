@@ -77,7 +77,7 @@ namespace sp
                 //            gnucmd = popen("gnuplot -persist &> /dev/null","w");
                 //#define term "aqua"
 #else
-#error Only Windows and Linux/Unix is supported so far!
+//error Only Windows and Linux/Unix is supported so far!
 #endif
                 if(!gnucmd)
                 {
